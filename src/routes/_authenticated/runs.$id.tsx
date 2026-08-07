@@ -3,6 +3,10 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Spine, type SpineFlags } from "@/components/pipeline/Spine";
+import { ContextPane } from "@/components/pipeline/ContextPane";
+import { ApprovalGate, InterruptBanner } from "@/components/pipeline/ApprovalGate";
+import { QuarantineCard } from "@/components/pipeline/primitives";
 
 import { Chip, Empty, Mono, Prose, StageCard } from "@/components/pipeline/primitives";
 import { STAGES } from "@/components/pipeline/stages";
