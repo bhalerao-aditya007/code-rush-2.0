@@ -34,7 +34,7 @@ function MemoryPage() {
   });
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="mode-paper mx-auto max-w-3xl px-6 py-10">
       <p className="rule-label">Stage 15 — Long-term strategic memory</p>
       <h1 className="mt-2 text-4xl">What the system has learned</h1>
       <p className="mt-3 text-sm text-muted-foreground">
@@ -46,7 +46,7 @@ function MemoryPage() {
         {entries.data?.map((m) => (
           <article key={m.id} className="paper p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <Chip tone="sienna">{m.title}</Chip>
+              <Chip tone="provenance">{m.title}</Chip>
               <span className="ml-auto font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
                 weight {Number(m.weight).toFixed(2)}
               </span>
