@@ -57,6 +57,12 @@
   --background: #F6F4EE;
   --foreground: #22201B;
   --card: #FCFBF8;
+  --forest: var(--signal-green);
+  --warn: var(--flag-amber);
+  --sienna: var(--provenance-violet);
+  --parchment: var(--paper-50);
+  --ink: var(--foreground);
+  --rule: var(--line-mid);
   --card-foreground: #22201B;
   --popover: #FCFBF8;
   --popover-foreground: #22201B;
