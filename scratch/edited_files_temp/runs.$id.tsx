@@ -4,9 +4,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Chip, Empty, Mono, Prose, StageCard } from "@/components/pipeline/primitives";
+import { Chip, Empty, Mono, Prose, QuarantineCard, StageCard } from "@/components/pipeline/primitives";
 import { STAGES } from "@/components/pipeline/stages";
 import { IdeaGraphCanvas } from "@/components/pipeline/IdeaGraphCanvas";
+import { Spine, type SpineFlags } from "@/components/pipeline/Spine";
+import { ContextPane } from "@/components/pipeline/ContextPane";
+import { ApprovalGate, InterruptBanner } from "@/components/pipeline/ApprovalGate";
+import { TONE_TEXT, type Tone } from "@/components/pipeline/tone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,18 +39,20 @@ import {
 export const Route = createFileRoute("/_authenticated/runs/$id")({
   head: () => ({
     meta: [
-      { title: "Run workspace — Lattice" },
+      { title: "Run workspace — Ledger" },
       {
         name: "description",
         content:
           "Drive one research run stage by stage: firewalled retrieval, idea gates, pseudocode and code review, sandboxed execution, versioned reruns and paper generation.",
       },
-      { property: "og:title", content: "Run workspace — Lattice" },
+      { property: "og:title", content: "Run workspace — Ledger" },
       { property: "og:description", content: "Stage-by-stage control of a governed AI research run." },
     ],
   }),
   component: RunWorkspace,
 });
+
+const HUMAN_GATE_STAGES = [4, 8, 10, 14];
 
 function useRunData(id: string) {
   const project = useQuery({
@@ -208,27 +214,26 @@ function RunWorkspace() {
     ?.lab_required ?? []) as Array<{ claim: string; reason: string }>;
   const agentOnly = ((theory?.meta as { agent_only?: string[] } | null)?.agent_only ?? []) as string[];
 
+  const flags: SpineFlags = {
+    injectionStages: flagged.length > 0 ? new Set([2]) : new Set(),
+    rollbackStages: versions.some((v) => v.rolled_back) ? new Set([13, 14]) : new Set(),
+    awaitingStages: new Set(HUMAN_GATE_STAGES.includes(project.stage) ? [project.stage] : []),
+  };
+
   return (
-    <main className="mx-auto grid max-w-[1400px] gap-8 px-6 py-8 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
-      {/* Stage rail */}
-      <nav className="hidden h-fit lg:sticky lg:top-20 lg:block">
-        <p className="rule-label">Pipeline</p>
-        <ol className="mt-3 space-y-1">
-          {STAGES.map((s, i) => (
-            <li key={s.name}>
-              <a
-                href={`#stage-${i + 1}`}
-                className={`flex gap-2 rounded-sm px-2 py-1 text-xs transition-colors hover:bg-accent ${
-                  project.stage === i + 1 ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground"
-                }`}
-              >
-                <span className="font-[family-name:var(--font-mono)]">{String(i + 1).padStart(2, "0")}</span>
-                {s.name}
-              </a>
-            </li>
-          ))}
-        </ol>
-      </nav>
+    <main className="mx-auto grid max-w-[1400px] gap-8 px-6 py-8 lg:grid-cols-[240px_minmax(0,1fr)_340px]">
+      {/* Spine — navigation and audit trail in one */}
+      <div className="hidden lg:sticky lg:top-12 lg:block lg:h-[calc(100vh-3rem)]">
+        <Spine
+          stages={STAGES}
+          currentStage={project.stage}
+          activeStage={project.stage}
+          flags={flags}
+          onNavigate={(i) =>
+            document.getElementById(`stage-${i}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        />
+      </div>
 
       <div className="space-y-6">
         <header>
@@ -236,7 +241,7 @@ function RunWorkspace() {
             {project.mode} mode · {project.methodology_style} methodology · {project.latex_template} template
           </p>
           <h1 className="mt-2 text-4xl">{project.title}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{project.prompt}</p>
+          <p className="read-serif mt-2 max-w-3xl text-sm text-muted-foreground">{project.prompt}</p>
         </header>
 
         <StageCard index={1} {...stageProps(1)} active={project.stage === 1}>
@@ -247,6 +252,7 @@ function RunWorkspace() {
         <StageCard
           index={2}
           {...stageProps(2)}
+          mode="console"
           active={project.stage === 2}
           actions={
             <Button
@@ -263,15 +269,15 @@ function RunWorkspace() {
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <Chip>{sources.length} sources</Chip>
-                <Chip tone="sienna">{sources.filter((s) => s.retrieval_method === "dense").length} dense-ranked</Chip>
-                <Chip tone={flagged.length ? "danger" : "forest"}>{flagged.length} injection flags</Chip>
-                <Chip tone="warn">all wrapped as untrusted</Chip>
+                <Chip tone="provenance">{sources.filter((s) => s.retrieval_method === "dense").length} dense-ranked</Chip>
+                <Chip tone={flagged.length ? "flag" : "signal-green"}>{flagged.length} injection flags</Chip>
+                <Chip tone="flag">all wrapped as untrusted</Chip>
               </div>
               <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
                 {sources.map((s) => (
                   <article key={s.id} className="rounded-sm border border-border px-3 py-2">
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <a
+                      
                         href={s.url ?? "#"}
                         target="_blank"
                         rel="noreferrer"
@@ -279,7 +285,7 @@ function RunWorkspace() {
                       >
                         {s.title}
                       </a>
-                      {s.injection_flag && <Chip tone="danger">injection</Chip>}
+                      {s.injection_flag && <Chip tone="flag">injection</Chip>}
                     </div>
                     <p className="mt-1 font-[family-name:var(--font-mono)] text-[11px] text-muted-foreground">
                       {s.authors || "Unknown authors"} · {s.venue} · {s.year ?? "n.d."} · {s.retrieval_method} ·{" "}
@@ -297,6 +303,7 @@ function RunWorkspace() {
         <StageCard
           index={3}
           {...stageProps(3)}
+          mode="console"
           active={project.stage === 3}
           actions={
             <Button
@@ -313,11 +320,13 @@ function RunWorkspace() {
               {flagged.length === 0 ? (
                 <Empty>No injection attempts detected in retrieved content.</Empty>
               ) : (
-                <ul className="mt-2 space-y-1 text-xs">
+                <ul className="mt-2 space-y-2 text-xs">
                   {flagged.map((f) => (
-                    <li key={f.id} className="rounded-sm border border-destructive/40 px-3 py-1.5">
-                      <span className="font-medium">{f.title.slice(0, 90)}</span> — {f.injection_detail}. Quarantined as
-                      data; not executed.
+                    <li key={f.id}>
+                      <QuarantineCard>
+                        <span className="font-medium">{f.title.slice(0, 90)}</span> — {f.injection_detail}. Quarantined
+                        as data; not executed.
+                      </QuarantineCard>
                     </li>
                   ))}
                 </ul>
@@ -330,9 +339,9 @@ function RunWorkspace() {
                 {ideas.map((i) => (
                   <article key={i.id} className="rounded-sm border border-border p-3">
                     <div className="flex items-center gap-2">
-                      <Chip tone={i.kind === "discrepancy" ? "warn" : "sienna"}>{i.kind}</Chip>
-                      {i.requires_lab && <Chip tone="danger">lab work</Chip>}
-                      {i.selected && <Chip tone="forest">selected</Chip>}
+                      <Chip tone={i.kind === "discrepancy" ? "flag" : "provenance"}>{i.kind}</Chip>
+                      {i.requires_lab && <Chip tone="signal-red">lab work</Chip>}
+                      {i.selected && <Chip tone="signal-green">selected</Chip>}
                     </div>
                     <h3 className="mt-2 text-base leading-snug">{i.title}</h3>
                     <p className="mt-1 text-xs text-muted-foreground">{i.summary}</p>
@@ -346,7 +355,7 @@ function RunWorkspace() {
 
         {/* 4 — Selection gate */}
         <StageCard index={4} {...stageProps(4)} active={project.stage === 4}>
-          <div className="space-y-4">
+          <div className="mode-paper space-y-4 rounded-md border border-border p-4">
             <div className="flex flex-wrap gap-2">
               {ideas
                 .filter((i) => i.kind === "idea")
@@ -406,11 +415,14 @@ function RunWorkspace() {
         <StageCard
           index={5}
           {...stageProps(5)}
+          mode="console"
           active={project.stage === 5}
           actions={
             <Button
               disabled={pending === "ideaGraph" || !selected}
-              onClick={() => run("ideaGraph", () => call.ideaGraph({ data: { projectId: id } }), "Idea positioning graph generated")}
+              onClick={() =>
+                run("ideaGraph", () => call.ideaGraph({ data: { projectId: id } }), "Idea positioning graph generated")
+              }
             >
               {pending === "ideaGraph" ? "Mapping graph…" : latest("idea_graph") ? "Regenerate idea graph" : "Generate idea graph"}
             </Button>
@@ -433,13 +445,13 @@ function RunWorkspace() {
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-secondary/30 p-3">
                   <div>
-                    <p className="rule-label">Novelty Score</p>
-                    <p className="mt-1 text-2xl font-bold font-mono text-forest">
+                    <p className="rule-label">Novelty score</p>
+                    <p className="mt-1 text-2xl font-bold font-mono text-[var(--signal-green)]">
                       {Math.round((parsed.novelty_score ?? 0.8) * 100)}%
                     </p>
                   </div>
                   <div>
-                    <p className="rule-label">Graph Network</p>
+                    <p className="rule-label">Graph network</p>
                     <p className="mt-1 text-xs font-mono text-muted-foreground">
                       {parsed.nodes?.length ?? 0} nodes · {parsed.edges?.length ?? 0} relationship edges
                     </p>
@@ -448,22 +460,21 @@ function RunWorkspace() {
 
                 {parsed.positioning_summary && (
                   <div>
-                    <p className="rule-label">Field Positioning Summary</p>
-                    <p className="mt-1 text-xs text-foreground leading-relaxed">{parsed.positioning_summary}</p>
+                    <p className="rule-label">Field positioning summary</p>
+                    <p className="mt-1 text-xs leading-relaxed text-foreground/90">{parsed.positioning_summary}</p>
                   </div>
                 )}
 
-                {/* Interactive Visual Graph Canvas */}
                 {parsed.nodes && parsed.edges && (
                   <div>
-                    <p className="rule-label mb-2">Interactive Idea Positioning Graph</p>
+                    <p className="rule-label mb-2">Interactive idea positioning graph</p>
                     <IdeaGraphCanvas nodesData={parsed.nodes} edgesData={parsed.edges} />
                   </div>
                 )}
 
                 {parsed.gap_analysis && (
-                  <div className="rounded-sm border border-forest/40 p-3 bg-forest/5">
-                    <p className="rule-label text-forest">Identified Field Gaps</p>
+                  <div className="rounded-sm border border-[var(--signal-green)]/40 bg-[var(--signal-green)]/5 p-3">
+                    <p className="rule-label !text-[var(--signal-green)]">Identified field gaps</p>
                     <p className="mt-1 text-xs">{parsed.gap_analysis}</p>
                   </div>
                 )}
@@ -496,7 +507,7 @@ function RunWorkspace() {
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {lineage.map((c, idx) => (
                       <span key={c} className="flex items-center gap-2">
-                        <Chip tone="sienna">{c}</Chip>
+                        <Chip tone="provenance">{c}</Chip>
                         {idx < lineage.length - 1 && <span className="text-muted-foreground">→</span>}
                       </span>
                     ))}
@@ -512,6 +523,7 @@ function RunWorkspace() {
         <StageCard
           index={7}
           {...stageProps(7)}
+          mode="console"
           active={project.stage === 7}
           actions={
             <Button
@@ -553,6 +565,7 @@ function RunWorkspace() {
         <StageCard
           index={9}
           {...stageProps(9)}
+          mode="console"
           active={project.stage === 9}
           actions={
             <Button
@@ -594,6 +607,7 @@ function RunWorkspace() {
         <StageCard
           index={11}
           {...stageProps(11)}
+          mode="console"
           active={project.stage === 11}
           actions={
             <Button
@@ -604,11 +618,11 @@ function RunWorkspace() {
             </Button>
           }
         >
-          <div className="flex flex-wrap gap-2">
-            <Chip tone="warn">network denied</Chip>
-            <Chip tone="warn">2 vCPU / 4 GB</Chip>
-            <Chip tone="warn">900s wall clock</Chip>
-            <Chip tone="warn">disposable session</Chip>
+          <div className="mode-console flex flex-wrap items-center gap-x-4 gap-y-1 rounded-sm border border-border px-3 py-2 font-[family-name:var(--font-mono)] text-[11px] text-muted-foreground">
+            <span className="text-[var(--flag-amber)]">● network: denied</span>
+            <span>container: disposable</span>
+            <span>2 vCPU / 4 GB</span>
+            <span>TTL 900s</span>
           </div>
           {lastVersion?.logs && (
             <div className="mt-4">
@@ -621,7 +635,7 @@ function RunWorkspace() {
         </StageCard>
 
         {/* 12, 13, 14 — Results, rerun, architecture */}
-        <StageCard index={12} {...stageProps(12)} active={project.stage === 12}>
+        <StageCard index={12} {...stageProps(12)} mode="console" active={project.stage === 12}>
           {versions.length === 0 ? (
             <Empty>No results yet.</Empty>
           ) : (
@@ -629,30 +643,30 @@ function RunWorkspace() {
               {versions.map((v) => {
                 const metricsObj = (typeof v.metrics === "object" && v.metrics !== null ? v.metrics : {}) as Record<string, unknown>;
                 const configObj = (typeof v.config === "object" && v.config !== null ? v.config : {}) as Record<string, unknown>;
-                
+
                 const modelName = String(configObj.model || configObj.model_type || configObj.algorithm || "ML / PyTorch Model");
 
                 return (
-                  <article key={v.id} className="paper rounded-md border border-border p-4 shadow-sm space-y-3">
+                  <article key={v.id} className="paper space-y-3 rounded-md border border-border p-4 shadow-sm">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Chip tone="sienna">v{v.version}</Chip>
-                      <span className="font-semibold text-sm">{v.label || `Experiment Version ${v.version}`}</span>
-                      <Chip tone={v.verdict === "good" ? "forest" : "danger"}>{v.verdict}</Chip>
-                      <Chip tone="muted">{modelName}</Chip>
-                      {v.architecture_change && <Chip tone="warn">architecture revision</Chip>}
-                      {v.rolled_back && <Chip tone="danger">rolled back</Chip>}
+                      <Chip>v{v.version}</Chip>
+                      <span className="text-sm font-semibold">{v.label || `Experiment Version ${v.version}`}</span>
+                      <Chip tone={v.verdict === "good" ? "signal-green" : "signal-red"}>{v.verdict}</Chip>
+                      <Chip>{modelName}</Chip>
+                      {v.architecture_change && <Chip tone="flag">architecture revision</Chip>}
+                      {v.rolled_back && <Chip tone="signal-red">rolled back</Chip>}
                       <span className="ml-auto font-mono text-xs font-bold text-muted-foreground">
-                        Overall Score: {Number(v.score ?? 0).toFixed(3)}
+                        Overall score: {Number(v.score ?? 0).toFixed(3)}
                       </span>
                     </div>
 
                     {Object.keys(metricsObj).length > 0 && (
-                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 pt-1">
+                      <div className="grid gap-2 pt-1 sm:grid-cols-2 md:grid-cols-4">
                         {Object.entries(metricsObj).map(([key, val]) => {
                           const numVal = typeof val === "number" ? val : Number(val);
-                          const formattedVal = !isNaN(numVal) 
-                            ? numVal <= 1 && numVal > 0 
-                              ? `${(numVal * 100).toFixed(2)}%` 
+                          const formattedVal = !isNaN(numVal)
+                            ? numVal <= 1 && numVal > 0
+                              ? `${(numVal * 100).toFixed(2)}%`
                               : numVal.toFixed(4)
                             : String(val);
 
@@ -668,7 +682,7 @@ function RunWorkspace() {
 
                     {Object.keys(configObj).length > 0 && (
                       <div className="pt-1">
-                        <p className="rule-label">Hyperparameters & Configuration</p>
+                        <p className="rule-label">Hyperparameters & configuration</p>
                         <div className="mt-1.5 flex flex-wrap gap-1.5 font-mono text-[11px]">
                           {Object.entries(configObj).map(([k, val]) => (
                             <span key={k} className="rounded-sm border border-border bg-background px-2 py-0.5 text-muted-foreground">
@@ -679,7 +693,7 @@ function RunWorkspace() {
                       </div>
                     )}
 
-                    {v.rollback_reason && <p className="mt-1 text-xs text-destructive">{v.rollback_reason}</p>}
+                    {v.rollback_reason && <p className="mt-1 text-xs text-[var(--signal-red)]">{v.rollback_reason}</p>}
                   </article>
                 );
               })}
@@ -690,6 +704,7 @@ function RunWorkspace() {
         <StageCard
           index={13}
           {...stageProps(13)}
+          mode="console"
           active={project.stage === 13}
           actions={
             <Button
@@ -724,40 +739,23 @@ function RunWorkspace() {
           {!proposal ? (
             <Empty>No architectural change is on the table.</Empty>
           ) : (
-            <div className="space-y-3 rounded-sm border border-warn/50 p-4">
-              <p className="text-sm">
-                <strong>Architecture needs modification — proceed?</strong>
-              </p>
-              <Prose text={`${proposal.change}\n\nJustification: ${proposal.justification}\n\nRisk: ${proposal.risk}`} />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  disabled={pending === "decide"}
-                  onClick={() =>
-                    run(
-                      "decide",
-                      () =>
-                        call.decide({ data: { projectId: id, approved: true, change: proposal.change } }),
-                      "Architecture revision executed",
-                    ).then(() => setProposal(null))
-                  }
-                >
-                  Yes, proceed
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending === "decide"}
-                  onClick={() =>
-                    run("decide", () =>
-                      call.decide({ data: { projectId: id, approved: false, change: proposal.change } }),
-                    ).then(() => setProposal(null))
-                  }
-                >
-                  No, keep retuning
-                </Button>
-              </div>
-            </div>
+            <InterruptBanner
+              title="This fix changes the model architecture — approve to continue, or reject to keep the current version."
+              body={`${proposal.change}\n\nJustification: ${proposal.justification}\n\nRisk: ${proposal.risk}`}
+              pending={pending === "decide"}
+              onApprove={() =>
+                run(
+                  "decide",
+                  () => call.decide({ data: { projectId: id, approved: true, change: proposal.change } }),
+                  "Architecture revision executed",
+                ).then(() => setProposal(null))
+              }
+              onReject={() =>
+                run("decide", () =>
+                  call.decide({ data: { projectId: id, approved: false, change: proposal.change } }),
+                ).then(() => setProposal(null))
+              }
+            />
           )}
         </StageCard>
 
@@ -781,7 +779,7 @@ function RunWorkspace() {
                     disabled={pending === "plagiarism"}
                     onClick={() => run("plagiarism", () => call.plagiarism({ data: { projectId: id } }), "Plagiarism check complete")}
                   >
-                    {pending === "plagiarism" ? "Scanning GoWinston AI…" : "Scan Plagiarism (GoWinston AI)"}
+                    {pending === "plagiarism" ? "Scanning GoWinston AI…" : "Scan plagiarism (GoWinston AI)"}
                   </Button>
                   <Button variant="outline" onClick={() => downloadTex(project.title, paper.content)}>
                     Download .tex
@@ -794,6 +792,119 @@ function RunWorkspace() {
           {paper ? (
             <div className="space-y-6">
               <Mono>{paper.content}</Mono>
+
+              {(() => {
+                const plag = (paper.meta as { plagiarism?: Record<string, unknown> } | null)?.plagiarism;
+                if (!plag) return null;
+
+                if (!plag.success) {
+                  return (
+                    <div className="rounded-sm border border-destructive/40 bg-destructive/10 p-4 text-xs">
+                      <p className="font-semibold text-destructive">Plagiarism check notice</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {String(plag.error || "Unable to reach GoWinston AI plagiarism service. The paper remains complete.")}
+                      </p>
+                    </div>
+                  );
+                }
+
+                let rawScore = Number(plag.score ?? 0);
+                if (rawScore <= 1 && rawScore > 0) rawScore = rawScore * 100;
+                const plagPercent = Math.min(100, Math.max(0, Math.round(rawScore)));
+                const originalityPercent = 100 - plagPercent;
+
+                const tone: Tone =
+                  originalityPercent >= 80 ? "signal-green" : originalityPercent >= 50 ? "flag" : "signal-red";
+                const toneColor = TONE_TEXT[tone];
+                const strokeColor = tone === "signal-green" ? "#4C9A72" : tone === "flag" ? "#D98E2F" : "#C05B4D";
+
+                const plagSources = Array.isArray(plag.sources) ? plag.sources : [];
+
+                return (
+                  <div className="paper mode-paper space-y-4 rounded-md border border-border p-5 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-semibold">GoWinston AI plagiarism report</h3>
+                          <Chip tone={tone}>
+                            {originalityPercent >= 80 ? "Pass · Highly original" : originalityPercent >= 50 ? "Review needed" : "High risk"}
+                          </Chip>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Scanned against 400B+ web pages, journals, and databases
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid items-center gap-6 sm:grid-cols-2 md:grid-cols-3">
+                      <div className="flex items-center gap-4 rounded-sm border border-border bg-secondary/30 p-3">
+                        <div className="relative flex h-16 w-16 items-center justify-center">
+                          <svg className="h-16 w-16 -rotate-90 transform" viewBox="0 0 36 36">
+                            <path
+                              className="text-border"
+                              strokeWidth="3.5"
+                              stroke="currentColor"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path
+                              strokeWidth="3.5"
+                              strokeDasharray={`${originalityPercent}, 100`}
+                              strokeLinecap="round"
+                              stroke={strokeColor}
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                          </svg>
+                          <span className={`absolute text-sm font-bold ${toneColor}`}>{originalityPercent}%</span>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium">Originality score</p>
+                          <p className="text-[11px] text-muted-foreground">{plagPercent}% similarity detected</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-sm border border-border bg-secondary/30 p-3">
+                        <p className="rule-label">Matched sources</p>
+                        <p className="mt-1 text-xl font-bold">{plagSources.length}</p>
+                        <p className="text-[11px] text-muted-foreground">External overlaps found</p>
+                      </div>
+
+                      <div className="rounded-sm border border-border bg-secondary/30 p-3">
+                        <p className="rule-label">Verification engine</p>
+                        <p className="mt-1 text-sm font-semibold">GoWinston AI v2</p>
+                        <p className="text-[11px] font-medium text-[var(--signal-green)]">✓ Scanned & verified</p>
+                      </div>
+                    </div>
+
+                    {plagSources.length > 0 && (
+                      <div className="mt-4 space-y-2 pt-2">
+                        <p className="rule-label">Overlapping literature / web sources</p>
+                        <div className="max-h-40 space-y-1.5 overflow-auto pr-1">
+                          {plagSources.map((src: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between rounded-sm border border-border px-3 py-1.5 text-xs"
+                            >
+                              
+                                href={src.url || "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="max-w-[80%] truncate font-medium text-foreground/90 hover:underline"
+                              >
+                                {src.title || src.url || `Matched source #${idx + 1}`}
+                              </a>
+                              <span className="font-mono text-[11px] font-semibold text-[var(--flag-amber)]">
+                                {Math.round(Number(src.similarity || src.score || 0) * (Number(src.similarity) <= 1 ? 100 : 1))}% match
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <Empty>A good result unlocks paper generation.</Empty>
@@ -853,7 +964,7 @@ function RunWorkspace() {
                     ))}
                   </ul>
                 </div>
-                <div className="rounded-sm border border-forest/40 p-3">
+                <div className="rounded-sm border border-[var(--signal-green)]/40 p-3">
                   <p className="rule-label">Resolvable by the agent alone</p>
                   <ul className="mt-2 space-y-1 text-xs">
                     {agentOnly.length === 0 && <li className="text-muted-foreground">None listed.</li>}
@@ -868,12 +979,12 @@ function RunWorkspace() {
         </StageCard>
       </div>
 
-      {/* Sidebar: Supervisor Control & Audit Log */}
-      <aside className="h-fit space-y-4 lg:sticky lg:top-20">
-        <div className="paper p-4 border border-forest/30 bg-forest/5">
+      {/* Context pane: supervisor control + reasoning / sources / safety log */}
+      <div className="hidden lg:sticky lg:top-12 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col lg:gap-3 lg:pb-4">
+        <div className="mode-console shrink-0 rounded-sm border border-[var(--signal-green)]/30 bg-[var(--signal-green)]/5 p-4">
           <div className="flex items-center justify-between">
-            <p className="rule-label text-forest">Autonomous Supervisor Agent</p>
-            <Chip tone="forest">Active</Chip>
+            <p className="rule-label !text-[var(--signal-green)]">Autonomous supervisor agent</p>
+            <Chip tone="signal-green">Active</Chip>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Oversees 11 sub-agents, checks data parameters, fixes bugs, and auto-advances non-gate stages.
@@ -886,34 +997,14 @@ function RunWorkspace() {
               run("supervisor", () => call.supervisorAdvance({ data: { projectId: id } }), "Supervisor evaluated pipeline")
             }
           >
-            {pending === "supervisor" ? "Supervisor evaluating..." : "Auto-advance pipeline"}
+            {pending === "supervisor" ? "Supervisor evaluating…" : "Auto-advance pipeline"}
           </Button>
         </div>
 
-        <div className="paper p-4">
-          <p className="rule-label">Audit log & Governance</p>
-          <div className="mt-3 max-h-[70vh] space-y-2 overflow-auto pr-1">
-            {logs.length === 0 && <Empty>Nothing logged yet.</Empty>}
-            {logs.map((l) => (
-              <div
-                key={l.id}
-                className={`border-l-2 pl-2 text-xs ${
-                  l.severity === "warn"
-                    ? "border-warn"
-                    : l.severity === "gate"
-                      ? "border-forest"
-                      : "border-border"
-                }`}
-              >
-                <p className="font-[family-name:var(--font-mono)] text-[10px] text-muted-foreground">
-                  {new Date(l.created_at).toLocaleTimeString()} · {l.actor} · stage {l.stage}
-                </p>
-                <p className="leading-snug">{l.event}</p>
-              </div>
-            ))}
-          </div>
+        <div className="min-h-0 flex-1">
+          <ContextPane logs={logs} sources={sources} currentStage={project.stage} />
         </div>
-      </aside>
+      </div>
     </main>
   );
 }
@@ -954,46 +1045,38 @@ function ReviewStage({
   const dirty = artifact ? value !== artifact.content : false;
 
   return (
-    <StageCard
-      index={index}
-      title={s.name}
-      blurb={s.blurb}
-      gate={s.gate}
-      guard={s.guard}
-      active={active}
-      actions={
-        artifact ? (
-          <>
-            <Button
-              disabled={pending}
-              onClick={() => onReview("approved", dirty ? value : undefined)}
-            >
-              {dirty ? "Save edits & approve" : "Approve"}
-            </Button>
-            <Button variant="outline" disabled={pending} onClick={() => onReview("rejected")}>
-              Reject
-            </Button>
-          </>
-        ) : undefined
-      }
-    >
+    <StageCard index={index} title={s.name} blurb={s.blurb} gate={s.gate} guard={s.guard} active={active}>
       {!artifact ? (
         <Empty>Nothing to review yet.</Empty>
       ) : (
-        <div className="space-y-3">
+        <ApprovalGate
+          summary={
+            dirty
+              ? "Saving your edits and approving makes this the input for the next stage."
+              : "Approving unlocks the next stage using this content exactly as generated."
+          }
+          approveLabel={dirty ? "Save edits & approve" : "Approve"}
+          pending={pending}
+          onApprove={() => onReview("approved", dirty ? value : undefined)}
+          onReject={() => onReview("rejected")}
+        >
           <div className="flex gap-2">
-            <Chip tone="sienna">v{artifact.version}</Chip>
-            <Chip tone={artifact.status === "approved" ? "forest" : artifact.status === "rejected" ? "danger" : "muted"}>
+            <Chip tone="provenance">v{artifact.version}</Chip>
+            <Chip
+              tone={
+                artifact.status === "approved" ? "signal-green" : artifact.status === "rejected" ? "signal-red" : "muted"
+              }
+            >
               {artifact.status}
             </Chip>
           </div>
           <Textarea
             rows={12}
-            className="font-[family-name:var(--font-mono)] text-xs"
+            className="mt-3 font-[family-name:var(--font-mono)] text-xs"
             value={value}
             onChange={(e) => setEditing({ ...editing, [artifact.id]: e.target.value })}
           />
-        </div>
+        </ApprovalGate>
       )}
     </StageCard>
   );
